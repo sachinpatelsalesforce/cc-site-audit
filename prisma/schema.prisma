@@ -1,0 +1,23 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Audit {
+  id           String   @id @default(cuid())
+  shareToken   String   @unique @default(cuid())
+  siteUrl      String
+  auditorName  String
+  auditorEmail String
+  opportunity  String?
+  region       String
+  status       String   @default("pending")
+  progress     Int      @default(0)
+  currentStep  String   @default("")
+  results      Json?
+  errorMessage String?
+  createdAt    DateTime @default(now())
+}
