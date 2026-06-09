@@ -79,29 +79,6 @@ function buildFallback(reason: string): AIReadinessResult {
   }
 }
 
-// Try each model in order, return the response from the first that succeeds
-const GEMINI_MODELS = [
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
-  'gemini-1.5-flash-8b',
-]
-
-async function callGemini(apiKey: string, body: object): Promise<Response | null> {
-  for (const model of GEMINI_MODELS) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(60000),
-        body: JSON.stringify(body),
-      }
-    )
-    if (res.status !== 429) return res
-    // 429 on this model — try the next one
-  }
-  return null  // all models quota-exceeded
-}
 
 const SYSTEM_PROMPT = `You are an AI Commerce Readiness Auditor. Your job is to evaluate how well a retail/ecommerce site is prepared for AI-driven discovery, recommendations, and conversational commerce across platforms like ChatGPT, Google AI Overviews, Gemini, Perplexity, and AI shopping assistants.
 
@@ -139,9 +116,9 @@ Return ONLY valid JSON matching this schema exactly:
 }`
 
 export async function checkAIReadiness(siteUrl: string): Promise<AIReadinessResult> {
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
-    return buildFallback('GEMINI_API_KEY not configured — AI Readiness analysis skipped.')
+    return buildFallback('OPENAI_API_KEY not configured — AI Readiness analysis skipped.')
   }
 
   const pageContent = await fetchPageContent(siteUrl)
@@ -156,49 +133,50 @@ ${pageContent}
 
 Analyse this site's AI readiness and return ONLY the JSON analysis with no additional text.`
 
-  const requestBody = {
-    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.2,
-      maxOutputTokens: 2048,
-    },
-  }
-
   try {
-    const res = await callGemini(apiKey, requestBody)
-
-    if (!res) {
-      return buildFallback('Gemini API daily quota reached. AI Readiness scores will be available once the quota resets (midnight Pacific time).')
-    }
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      signal: AbortSignal.timeout(60000),
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0.2,
+        max_tokens: 2048,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userMessage },
+        ],
+      }),
+    })
 
     if (!res.ok) {
       const err = await res.json().catch(() => null)
       const status = res.status
-      // Show clean messages for known error codes
       if (status === 429) {
-        return buildFallback('Gemini API daily quota reached. AI Readiness scores will be available once the quota resets (midnight Pacific time).')
+        return buildFallback('OpenAI API rate limit reached. Please try again in a moment.')
       }
-      if (status === 403) {
-        return buildFallback('Gemini API key is invalid or lacks permission. Check GEMINI_API_KEY in Heroku config.')
+      if (status === 401) {
+        return buildFallback('OpenAI API key is invalid. Check OPENAI_API_KEY in Heroku config.')
       }
       const msg = (err as { error?: { message?: string } })?.error?.message ?? `HTTP ${status}`
-      return buildFallback(`Gemini API error: ${msg}`)
+      return buildFallback(`OpenAI API error: ${msg}`)
     }
 
     const data = await res.json() as {
-      candidates?: { content?: { parts?: { text?: string }[] } }[]
+      choices?: { message?: { content?: string } }[]
     }
-    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-    if (!raw) return buildFallback('Empty response from Gemini.')
+    const raw = data.choices?.[0]?.message?.content ?? ''
+    if (!raw) return buildFallback('Empty response from OpenAI.')
 
-    const cleaned = raw.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
     let analysis: AIAnalysis
     try {
-      analysis = JSON.parse(cleaned) as AIAnalysis
+      analysis = JSON.parse(raw) as AIAnalysis
     } catch {
-      return buildFallback('Gemini returned unparseable JSON.')
+      return buildFallback('OpenAI returned unparseable JSON.')
     }
 
     const { dimensions, overallScore, execSummary, customerQuestions, contentGaps, recommendations } = analysis
@@ -254,6 +232,6 @@ Analyse this site's AI readiness and return ONLY the JSON analysis with no addit
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    return buildFallback(`AI Readiness analysis failed: ${msg}`)
+    return buildFallback(`AI Readiness analysis failed: ${msg.slice(0, 120)}`)
   }
 }
