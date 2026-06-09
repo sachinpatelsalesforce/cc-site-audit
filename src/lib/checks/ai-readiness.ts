@@ -79,6 +79,30 @@ function buildFallback(reason: string): AIReadinessResult {
   }
 }
 
+// Try each model in order, return the response from the first that succeeds
+const GEMINI_MODELS = [
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-8b',
+]
+
+async function callGemini(apiKey: string, body: object): Promise<Response | null> {
+  for (const model of GEMINI_MODELS) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(60000),
+        body: JSON.stringify(body),
+      }
+    )
+    if (res.status !== 429) return res
+    // 429 on this model — try the next one
+  }
+  return null  // all models quota-exceeded
+}
+
 const SYSTEM_PROMPT = `You are an AI Commerce Readiness Auditor. Your job is to evaluate how well a retail/ecommerce site is prepared for AI-driven discovery, recommendations, and conversational commerce across platforms like ChatGPT, Google AI Overviews, Gemini, Perplexity, and AI shopping assistants.
 
 You will be given the extracted text content from a site's homepage. Analyse it across 6 weighted dimensions and return a structured JSON analysis.
@@ -132,28 +156,35 @@ ${pageContent}
 
 Analyse this site's AI readiness and return ONLY the JSON analysis with no additional text.`
 
+  const requestBody = {
+    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0.2,
+      maxOutputTokens: 2048,
+    },
+  }
+
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(60000),
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-          contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            temperature: 0.2,
-            maxOutputTokens: 2048,
-          },
-        }),
-      }
-    )
+    const res = await callGemini(apiKey, requestBody)
+
+    if (!res) {
+      return buildFallback('Gemini API daily quota reached. AI Readiness scores will be available once the quota resets (midnight Pacific time).')
+    }
 
     if (!res.ok) {
-      const err = await res.text()
-      return buildFallback(`Gemini API error: ${res.status} — ${err.slice(0, 200)}`)
+      const err = await res.json().catch(() => null)
+      const status = res.status
+      // Show clean messages for known error codes
+      if (status === 429) {
+        return buildFallback('Gemini API daily quota reached. AI Readiness scores will be available once the quota resets (midnight Pacific time).')
+      }
+      if (status === 403) {
+        return buildFallback('Gemini API key is invalid or lacks permission. Check GEMINI_API_KEY in Heroku config.')
+      }
+      const msg = (err as { error?: { message?: string } })?.error?.message ?? `HTTP ${status}`
+      return buildFallback(`Gemini API error: ${msg}`)
     }
 
     const data = await res.json() as {
