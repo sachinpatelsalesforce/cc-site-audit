@@ -9,6 +9,32 @@ import CheckHintTooltip from './CheckHintTooltip'
 import { getHint } from '@/lib/check-hints'
 import type { CheckResult, CheckStatus } from '@/types/audit'
 
+function logoUrl(siteUrl: string) {
+  try {
+    const host = new URL(siteUrl.startsWith('http') ? siteUrl : `https://${siteUrl}`).hostname
+    const key = process.env.NEXT_PUBLIC_LOGO_DEV_KEY
+    return key ? `https://img.logo.dev/${host}?token=${key}&size=64&format=png` : null
+  } catch {
+    return null
+  }
+}
+
+function BrandLogo({ siteUrl, size = 32, className = '' }: { siteUrl: string; size?: number; className?: string }) {
+  const src = logoUrl(siteUrl)
+  if (!src) return null
+  return (
+    <img
+      src={src}
+      alt=""
+      width={size}
+      height={size}
+      className={className}
+      style={{ width: size, height: size, objectFit: 'contain' }}
+      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+    />
+  )
+}
+
 const STATUS_OPTIONS: { value: CheckStatus; label: string; colors: string }[] = [
   { value: 'pass',    label: 'Pass',    colors: 'bg-green-100 text-green-800 ring-green-300' },
   { value: 'partial', label: 'Partial', colors: 'bg-amber-100 text-amber-800 ring-amber-300' },
@@ -241,9 +267,12 @@ export default function AuditDashboard({ audit, isShare = false }: { audit: Audi
               <p className="text-blue-300 text-xs">Site Audit</p>
             </div>
           </div>
-          <div className="bg-white/5 rounded-xl p-3">
-            <p className="text-white font-semibold text-xs truncate">{audit.siteUrl}</p>
-            <p className="text-blue-300 text-xs mt-0.5">{audit.auditorName}</p>
+          <div className="bg-white/5 rounded-xl p-3 flex items-center gap-2.5">
+            <BrandLogo siteUrl={audit.siteUrl} size={28} className="rounded flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-white font-semibold text-xs truncate">{audit.siteUrl}</p>
+              <p className="text-blue-300 text-xs mt-0.5">{audit.auditorName}</p>
+            </div>
           </div>
         </div>
 
@@ -366,6 +395,14 @@ export default function AuditDashboard({ audit, isShare = false }: { audit: Audi
           {/* ── OVERVIEW TAB ──────────────────────────────────────── */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
+              {/* Site identity */}
+              <div className="flex items-center gap-3">
+                <BrandLogo siteUrl={audit.siteUrl} size={40} className="rounded-xl flex-shrink-0" />
+                <div>
+                  <p className="font-bold text-gray-900 text-base leading-tight">{audit.siteUrl}</p>
+                  <p className="text-gray-400 text-xs mt-0.5">Audited by {audit.auditorName} · {new Date(audit.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                </div>
+              </div>
               {/* Accuracy notice */}
               {!isShare && <AutomatedAccuracyBanner onEdit={() => setActiveTab('categories')} />}
               {/* Stat cards row */}

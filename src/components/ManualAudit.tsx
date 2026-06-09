@@ -8,6 +8,16 @@ import { getHint } from '@/lib/check-hints'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
+function brandLogoUrl(siteUrl: string) {
+  try {
+    const host = new URL(siteUrl.startsWith('http') ? siteUrl : `https://${siteUrl}`).hostname
+    const key = process.env.NEXT_PUBLIC_LOGO_DEV_KEY
+    return key ? `https://img.logo.dev/${host}?token=${key}&size=64&format=png` : null
+  } catch {
+    return null
+  }
+}
+
 const STATUS_OPTIONS: { value: CheckStatus; label: string; colors: string }[] = [
   { value: 'pass',    label: 'Pass',    colors: 'bg-green-100 text-green-800 ring-green-300' },
   { value: 'partial', label: 'Partial', colors: 'bg-amber-100 text-amber-800 ring-amber-300' },
@@ -398,6 +408,14 @@ export default function ManualAudit({ audit }: { audit: AuditRecord }) {
         <div className="px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <img src="https://d3f1iyfxxz8i1e.cloudfront.net/courses/course_image/849736ed9ea6.png" alt="Logo" className="w-7 h-7 object-contain flex-shrink-0" />
+            {brandLogoUrl(audit.siteUrl) && (
+              <img
+                src={brandLogoUrl(audit.siteUrl)!}
+                alt=""
+                className="w-7 h-7 rounded object-contain flex-shrink-0 bg-white/10"
+                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+              />
+            )}
             <div className="min-w-0">
               <span className="font-bold text-sm tracking-tight">Manual Audit</span>
               <span className="text-blue-300 text-xs ml-2 truncate hidden sm:inline">{audit.siteUrl}</span>
