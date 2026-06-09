@@ -6,6 +6,7 @@ export interface CheckResult {
   status: CheckStatus
   detail?: string
   sfccValue?: string
+  note?: string
 }
 
 export interface CategoryResult {
