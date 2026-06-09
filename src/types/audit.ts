@@ -22,6 +22,7 @@ export interface AuditResult {
   overallScore: number
   grade: string
   siteUrl: string
+  lighthouseScore?: number | null
   crawledPages: {
     homepage?: string
     plp?: string

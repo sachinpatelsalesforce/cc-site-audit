@@ -180,7 +180,7 @@ export default function AuditDashboard({ audit, isShare = false }: { audit: Audi
             <div className="flex-1 text-center sm:text-left">
               <h1 className="text-2xl font-bold mb-1">{audit.siteUrl}</h1>
               <p className="text-blue-200 text-sm mb-4">Commerce Cloud Readiness Report</p>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-3">
                 <div className="bg-white/10 rounded-xl p-3 text-center">
                   <div className="text-2xl font-black text-green-400">{passCount}</div>
                   <div className="text-xs text-blue-200 mt-0.5">Checks Passed</div>
@@ -192,6 +192,16 @@ export default function AuditDashboard({ audit, isShare = false }: { audit: Audi
                 <div className="bg-white/10 rounded-xl p-3 text-center">
                   <div className="text-2xl font-black text-white">{totalChecks}</div>
                   <div className="text-xs text-blue-200 mt-0.5">Total Checks</div>
+                </div>
+                <div className="bg-white/10 rounded-xl p-3 text-center">
+                  <div className={`text-2xl font-black ${
+                    initialResults.lighthouseScore == null ? 'text-gray-300' :
+                    initialResults.lighthouseScore >= 90 ? 'text-green-400' :
+                    initialResults.lighthouseScore >= 50 ? 'text-amber-400' : 'text-red-400'
+                  }`}>
+                    {initialResults.lighthouseScore ?? '—'}
+                  </div>
+                  <div className="text-xs text-blue-200 mt-0.5">Lighthouse</div>
                 </div>
               </div>
             </div>

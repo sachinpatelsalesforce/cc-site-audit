@@ -1,15 +1,15 @@
 'use client'
 
 const STEPS = [
-  'Starting crawl…',
-  'Discovering site pages…',
+  'Starting audit…',
+  'Launching Lighthouse + browser crawl…',
   'Auditing homepage…',
   'Testing search & navigation…',
   'Checking product listing pages…',
   'Analysing product detail pages…',
   'Reviewing cart & checkout…',
   'Testing mobile experience…',
-  'Measuring performance…',
+  'Checking page performance…',
   'Calculating scores…',
 ]
 

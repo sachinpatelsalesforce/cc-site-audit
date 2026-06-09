@@ -10,14 +10,12 @@ import { checkMobile } from './checks/mobile'
 import { checkPerformance } from './checks/performance'
 import { checkSEO } from './checks/seo'
 import { checkLoyalty } from './checks/loyalty'
+import { checkVitals } from './checks/vitals'
 import { scoreCategory, overallScore, scoreToGrade, extractOpportunities } from './scoring'
 import type { AuditResult, CategoryResult } from '@/types/audit'
 
 async function setProgress(id: string, progress: number, currentStep: string) {
-  await prisma.audit.update({
-    where: { id },
-    data: { progress, currentStep },
-  })
+  await prisma.audit.update({ where: { id }, data: { progress, currentStep } })
 }
 
 export async function runAudit(auditId: string, siteUrl: string) {
@@ -25,15 +23,19 @@ export async function runAudit(auditId: string, siteUrl: string) {
   try {
     await prisma.audit.update({
       where: { id: auditId },
-      data: { status: 'running', progress: 0, currentStep: 'Starting crawl…' },
+      data: { status: 'running', progress: 0, currentStep: 'Starting audit…' },
     })
 
     browser = await launchBrowser()
 
-    await setProgress(auditId, 5, 'Discovering site pages…')
-    const crawled = await smartCrawl(browser, siteUrl)
+    // Kick off PSI/Lighthouse in parallel with the browser crawl — it takes ~20s
+    await setProgress(auditId, 5, 'Launching Lighthouse + browser crawl…')
+    const [crawled, vitalsResult] = await Promise.all([
+      smartCrawl(browser, siteUrl),
+      checkVitals(siteUrl),
+    ])
 
-    await setProgress(auditId, 15, 'Auditing homepage…')
+    await setProgress(auditId, 20, 'Auditing homepage…')
     const homePage = await loadPage(browser, crawled.homepage)
     const homepageChecks = await checkHomepage(homePage)
     const seoChecks = await checkSEO(homePage)
@@ -41,12 +43,12 @@ export async function runAudit(auditId: string, siteUrl: string) {
     const loyaltyChecks = await checkLoyalty(homePage)
     await homePage.close()
 
-    await setProgress(auditId, 30, 'Testing search & navigation…')
+    await setProgress(auditId, 35, 'Testing search & navigation…')
     const searchPage = await loadPage(browser, crawled.homepage)
     const searchChecks = await checkSearch(searchPage)
     await searchPage.close()
 
-    await setProgress(auditId, 45, 'Checking product listing pages…')
+    await setProgress(auditId, 48, 'Checking product listing pages…')
     let plpChecks: CategoryResult['checks'] = []
     if (crawled.plp) {
       const plpPage = await loadPage(browser, crawled.plp)
@@ -56,7 +58,7 @@ export async function runAudit(auditId: string, siteUrl: string) {
       plpChecks = stubChecks('plp')
     }
 
-    await setProgress(auditId, 58, 'Analysing product detail pages…')
+    await setProgress(auditId, 60, 'Analysing product detail pages…')
     let pdpChecks: CategoryResult['checks'] = []
     if (crawled.pdp) {
       const pdpPage = await loadPage(browser, crawled.pdp)
@@ -85,7 +87,7 @@ export async function runAudit(auditId: string, siteUrl: string) {
     const mobileChecks = await checkMobile(mobilePage)
     await mobilePage.close()
 
-    await setProgress(auditId, 88, 'Measuring performance…')
+    await setProgress(auditId, 88, 'Checking page performance…')
     const perfPage = await loadPage(browser, crawled.homepage)
     const perfChecks = await checkPerformance(perfPage)
     await perfPage.close()
@@ -100,9 +102,10 @@ export async function runAudit(auditId: string, siteUrl: string) {
       build('cart', 'Cart & Checkout', '🛒', cartChecks),
       build('personalization', 'Personalization & AI', '🤖', personalizationChecks),
       build('mobile', 'Mobile Experience', '📱', mobileChecks),
-      build('performance', 'Performance', '⚡', perfChecks),
+      build('performance', 'Page Performance', '⚡', perfChecks),
       build('seo', 'SEO & Discovery', '🎯', seoChecks),
       build('loyalty', 'Loyalty & Engagement', '⭐', loyaltyChecks),
+      build('vitals', 'Core Web Vitals', '📊', vitalsResult.checks),
     ]
 
     const overall = overallScore(categories)
@@ -119,6 +122,7 @@ export async function runAudit(auditId: string, siteUrl: string) {
         pdp: crawled.pdp,
         cart: crawled.cart,
       },
+      lighthouseScore: vitalsResult.lighthouseScore,
       categories,
       topOpportunities,
       completedAt: new Date().toISOString(),

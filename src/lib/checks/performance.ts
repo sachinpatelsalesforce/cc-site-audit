@@ -2,84 +2,74 @@ import type { Page } from 'puppeteer'
 import type { CheckResult } from '@/types/audit'
 
 export async function checkPerformance(page: Page): Promise<CheckResult[]> {
-  const metrics = await page.evaluate(() => {
-    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
-    const paint = performance.getEntriesByType('paint')
-    const fcp = paint.find(p => p.name === 'first-contentful-paint')?.startTime ?? null
-    const domLoad = nav?.domContentLoadedEventEnd ?? null
-    const fullLoad = nav?.loadEventEnd ?? null
-
-    // LCP via PerformanceObserver not available retroactively; use load time as proxy
-    return {
-      fcp,
-      domLoad,
-      fullLoad,
-      url: window.location.href,
-    }
-  })
-
   const results: CheckResult[] = []
 
-  // FCP < 2.5s
-  const fcp = metrics.fcp
-  results.push({
-    id: 'fcp',
-    label: 'First Contentful Paint < 2.5s',
-    status: fcp === null ? 'partial' : fcp < 2500 ? 'pass' : fcp < 4000 ? 'partial' : 'fail',
-    detail: fcp !== null ? `${(fcp / 1000).toFixed(2)}s` : 'Could not measure',
-    sfccValue: fcp !== null && fcp >= 2500 ? 'Storefront Next (PWA) + Heroku Edge Caching delivers sub-1s FCP — a direct ranking signal for Google and a key conversion driver.' : undefined,
-  })
-
-  // Page load < 5s proxy for LCP
-  const load = metrics.fullLoad
-  results.push({
-    id: 'page-load',
-    label: 'Page load time < 5s',
-    status: load === null ? 'partial' : load < 3000 ? 'pass' : load < 5000 ? 'partial' : 'fail',
-    detail: load !== null ? `${(load / 1000).toFixed(2)}s` : 'Could not measure',
-    sfccValue: load !== null && load >= 5000 ? 'A 1-second delay in load time reduces conversions by 7%. Commerce Cloud\'s CDN and page caching strategies improve core web vitals across the board.' : undefined,
-  })
-
   // HTTPS
-  const isHTTPS = metrics.url.startsWith('https://')
+  const url: string = await page.evaluate(() => window.location.href)
   results.push({
     id: 'https',
     label: 'HTTPS enforced',
-    status: isHTTPS ? 'pass' : 'fail',
-    sfccValue: isHTTPS ? undefined : 'HTTPS is a Google ranking factor and required for Google Pay / Apple Pay. Commerce Cloud enforces HTTPS across all storefronts.',
+    status: url.startsWith('https://') ? 'pass' : 'fail',
+    sfccValue: url.startsWith('https://') ? undefined : "HTTPS is a Google ranking factor and required for Apple Pay / Google Pay. Commerce Cloud enforces HTTPS across all storefronts.",
   })
 
-  // Lazy loading
-  const hasLazyImages = await page.evaluate(() => {
-    const imgs = document.querySelectorAll('img')
-    const lazy = Array.from(imgs).filter(img => img.getAttribute('loading') === 'lazy' || img.getAttribute('data-src'))
+  // Lazy-loaded images
+  const imgData: { total: number; lazy: number } = await page.evaluate(() => {
+    const imgs = Array.from(document.querySelectorAll('img'))
+    const lazy = imgs.filter(img => img.getAttribute('loading') === 'lazy' || img.getAttribute('data-src'))
     return { total: imgs.length, lazy: lazy.length }
   })
-  const lazyRatio = hasLazyImages.total > 0 ? hasLazyImages.lazy / hasLazyImages.total : 0
+  const lazyRatio = imgData.total > 0 ? imgData.lazy / imgData.total : 0
   results.push({
     id: 'lazy-images',
-    label: 'Images lazy loaded',
+    label: 'Images use lazy loading',
     status: lazyRatio > 0.5 ? 'pass' : lazyRatio > 0.2 ? 'partial' : 'fail',
-    detail: `${hasLazyImages.lazy}/${hasLazyImages.total} images lazy loaded`,
-    sfccValue: lazyRatio <= 0.2 ? 'Commerce Cloud\'s image service delivers responsive, WebP-converted, lazy-loaded images via CDN — reducing image payload by up to 60%.' : undefined,
+    detail: `${imgData.lazy}/${imgData.total} images lazy loaded`,
+    sfccValue: lazyRatio <= 0.2 ? "Commerce Cloud's image service delivers responsive, WebP-converted, lazy-loaded images via CDN — reducing image payload by up to 60%." : undefined,
   })
 
-  // Images sized
-  const hasOversizedImages = await page.evaluate(() => {
+  // Oversized images
+  const oversized: { total: number; oversized: number } = await page.evaluate(() => {
     const imgs = Array.from(document.querySelectorAll('img'))
-    const oversized = imgs.filter(img => {
+    const over = imgs.filter(img => {
       const natural = img.naturalWidth
       const displayed = img.clientWidth
       return natural > 0 && displayed > 0 && natural > displayed * 2
     })
-    return { oversized: oversized.length, total: imgs.length }
+    return { total: imgs.length, oversized: over.length }
   })
   results.push({
     id: 'image-sizing',
-    label: 'Images properly sized (no oversized downloads)',
-    status: hasOversizedImages.oversized === 0 ? 'pass' : hasOversizedImages.oversized < 3 ? 'partial' : 'fail',
-    detail: `${hasOversizedImages.oversized} oversized images found`,
-    sfccValue: hasOversizedImages.oversized > 0 ? 'Commerce Cloud\'s dynamic image resizing serves right-sized images per device — eliminating wasted bytes and improving Core Web Vitals.' : undefined,
+    label: 'Images served at appropriate resolution',
+    status: oversized.oversized === 0 ? 'pass' : oversized.oversized < 3 ? 'partial' : 'fail',
+    detail: oversized.oversized > 0 ? `${oversized.oversized} oversized images found` : undefined,
+    sfccValue: oversized.oversized > 0 ? "Commerce Cloud's dynamic image resizing serves right-sized images per device — eliminating wasted bytes and improving Core Web Vitals." : undefined,
+  })
+
+  // Render-blocking resources (count <link rel=stylesheet> + sync <script> in <head>)
+  const blocking: number = await page.evaluate(() => {
+    const head = document.head
+    const syncScripts = Array.from(head.querySelectorAll('script:not([async]):not([defer]):not([type="module"])')).length
+    const blockingCSS = Array.from(head.querySelectorAll('link[rel="stylesheet"]')).length
+    return syncScripts + Math.max(0, blockingCSS - 2)
+  })
+  results.push({
+    id: 'render-blocking',
+    label: 'Minimal render-blocking resources',
+    status: blocking === 0 ? 'pass' : blocking <= 3 ? 'partial' : 'fail',
+    detail: blocking > 0 ? `${blocking} potential render-blocking resources` : undefined,
+    sfccValue: blocking > 3 ? "Commerce Cloud's Storefront Next uses code-splitting and deferred loading to eliminate render-blocking scripts — directly improving LCP and FCP." : undefined,
+  })
+
+  // Viewport meta (mobile readiness, also a perf signal)
+  const hasViewport: boolean = await page.evaluate(() =>
+    !!document.querySelector('meta[name="viewport"][content*="width=device-width"]')
+  )
+  results.push({
+    id: 'viewport-meta',
+    label: 'Viewport meta tag present',
+    status: hasViewport ? 'pass' : 'fail',
+    sfccValue: hasViewport ? undefined : "Missing viewport meta causes mobile browsers to render at desktop width then scale down — triggering layout shifts and hurting CLS/LCP.",
   })
 
   return results
