@@ -1,5 +1,17 @@
 export type CheckStatus = 'pass' | 'partial' | 'fail'
 
+export interface TechItem {
+  name: string
+  category: string
+  confidence: 'high' | 'medium' | 'low'
+  sfccOpportunity?: string
+}
+
+export interface TechStackResult {
+  technologies: TechItem[]
+  categories: Record<string, TechItem[]>
+}
+
 export interface CheckResult {
   id: string
   label: string
@@ -32,6 +44,7 @@ export interface AuditResult {
   }
   categories: CategoryResult[]
   topOpportunities: Opportunity[]
+  techStack?: TechStackResult
   completedAt: string
 }
 

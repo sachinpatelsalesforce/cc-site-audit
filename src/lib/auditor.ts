@@ -11,6 +11,8 @@ import { checkPerformance } from './checks/performance'
 import { checkSEO } from './checks/seo'
 import { checkLoyalty } from './checks/loyalty'
 import { checkVitals } from './checks/vitals'
+import { checkAIReadiness } from './checks/ai-readiness'
+import { checkTechStack } from './checks/tech-stack'
 import { scoreCategory, overallScore, scoreToGrade, extractOpportunities } from './scoring'
 import type { AuditResult, CategoryResult } from '@/types/audit'
 
@@ -28,11 +30,13 @@ export async function runAudit(auditId: string, siteUrl: string) {
 
     browser = await launchBrowser()
 
-    // Kick off PSI/Lighthouse in parallel with the browser crawl — it takes ~20s
-    await setProgress(auditId, 5, 'Launching Lighthouse + browser crawl…')
-    const [crawled, vitalsResult] = await Promise.all([
+    // Kick off PSI/Lighthouse + AI Readiness in parallel with the browser crawl
+    await setProgress(auditId, 5, 'Launching Lighthouse + browser crawl + AI analysis…')
+    const [crawled, vitalsResult, aiReadinessResult, techStackResult] = await Promise.all([
       smartCrawl(browser, siteUrl),
       checkVitals(siteUrl),
+      checkAIReadiness(siteUrl),
+      checkTechStack(siteUrl),
     ])
 
     await setProgress(auditId, 20, 'Auditing homepage…')
@@ -106,6 +110,7 @@ export async function runAudit(auditId: string, siteUrl: string) {
       build('seo', 'SEO & Discovery', '🎯', seoChecks),
       build('loyalty', 'Loyalty & Engagement', '⭐', loyaltyChecks),
       build('vitals', 'Core Web Vitals', '📊', vitalsResult.checks),
+      build('ai-readiness', 'AI Readiness', '🧠', aiReadinessResult.checks),
     ]
 
     const overall = overallScore(categories)
@@ -125,6 +130,7 @@ export async function runAudit(auditId: string, siteUrl: string) {
       lighthouseScore: vitalsResult.lighthouseScore,
       categories,
       topOpportunities,
+      techStack: techStackResult,
       completedAt: new Date().toISOString(),
     }
 

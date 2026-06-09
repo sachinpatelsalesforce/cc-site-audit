@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import AuditProgress from '@/components/AuditProgress'
 import AuditDashboard from '@/components/AuditDashboard'
+import ManualAudit from '@/components/ManualAudit'
 import type { AuditRecord } from '@/types/audit'
 
 export default function AuditPage() {
@@ -20,7 +21,7 @@ export default function AuditPage() {
         if (!res.ok) { setError('Audit not found'); return }
         const data: AuditRecord = await res.json()
         setAudit(data)
-        if (data.status === 'complete' || data.status === 'error') {
+        if (data.status === 'complete' || data.status === 'error' || data.status === 'manual') {
           clearInterval(interval)
         }
       } catch {
@@ -64,6 +65,10 @@ export default function AuditPage() {
         </div>
       </div>
     )
+  }
+
+  if (audit.status === 'manual') {
+    return <ManualAudit audit={audit} />
   }
 
   if (audit.status !== 'complete') {

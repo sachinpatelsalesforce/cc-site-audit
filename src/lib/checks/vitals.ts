@@ -63,7 +63,12 @@ export async function checkVitals(siteUrl: string): Promise<VitalsResult> {
   }
 
   if (data.error || !data.lighthouseResult) {
-    return fallbackVitals(data.error?.message || 'No Lighthouse result returned.')
+    const raw = data.error?.message || 'No Lighthouse result returned.'
+    const isQuota = /quota exceeded|rate limit/i.test(raw)
+    const friendly = isQuota
+      ? 'PageSpeed Insights daily quota reached. Add a PSI_API_KEY to your environment for 25,000 requests/day (free at console.cloud.google.com).'
+      : raw.length > 120 ? raw.slice(0, 120) + '…' : raw
+    return fallbackVitals(friendly)
   }
 
   const audits = data.lighthouseResult.audits

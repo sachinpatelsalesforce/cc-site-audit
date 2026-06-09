@@ -1,0 +1,25 @@
+{
+  "name": "CC Site Audit",
+  "description": "Salesforce Commerce Cloud ecommerce site audit tool",
+  "repository": "https://github.com/sachinpatelsalesforce/cc-site-audit",
+  "keywords": ["salesforce", "commerce-cloud", "audit"],
+  "addons": [
+    {
+      "plan": "heroku-postgresql:essential-0"
+    }
+  ],
+  "env": {
+    "GEMINI_API_KEY": {
+      "description": "Google Gemini API key for AI Readiness analysis — get free at https://aistudio.google.com/apikey",
+      "required": true
+    },
+    "PSI_API_KEY": {
+      "description": "Google PageSpeed Insights API key — get at https://console.cloud.google.com",
+      "required": false
+    }
+  },
+  "buildpacks": [
+    { "url": "https://github.com/jontewks/puppeteer-heroku-buildpack" },
+    { "url": "heroku/nodejs" }
+  ]
+}
