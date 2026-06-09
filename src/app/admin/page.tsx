@@ -85,6 +85,27 @@ export default function AdminPage() {
     setStats(data.stats)
   }
 
+  async function deleteAudit(id: string) {
+    await fetch('/api/admin/audits', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': password },
+      body: JSON.stringify({ id }),
+    })
+    setAudits(prev => prev.filter(a => a.id !== id))
+    setStats(prev => prev ? { ...prev, total: prev.total - 1 } : prev)
+  }
+
+  async function deleteAll() {
+    if (!confirm(`Delete all ${audits.length} audits? This cannot be undone.`)) return
+    await fetch('/api/admin/audits', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': password },
+      body: JSON.stringify({}),
+    })
+    setAudits([])
+    setStats(prev => prev ? { ...prev, total: 0, complete: 0, manual: 0, avgScore: 0, byRegion: {}, byAuditor: [], byDay: {} } : prev)
+  }
+
   useEffect(() => {
     if (!authed) return
     const interval = setInterval(refresh, 30000)
@@ -237,6 +258,14 @@ export default function AdminPage() {
         <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
           <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
             <h2 className="font-bold text-gray-900 flex-1">All Audits ({filtered.length})</h2>
+            {audits.length > 0 && (
+              <button
+                onClick={deleteAll}
+                className="text-xs font-semibold text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors border border-red-200"
+              >
+                Delete all
+              </button>
+            )}
             <input
               type="text"
               placeholder="Search URL, name or email…"
@@ -317,6 +346,13 @@ export default function AdminPage() {
                         >
                           Share
                         </a>
+                        <span className="text-gray-200">|</span>
+                        <button
+                          onClick={() => deleteAudit(a.id)}
+                          className="text-xs font-medium text-red-400 hover:text-red-600 transition-colors"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </td>
                   </tr>

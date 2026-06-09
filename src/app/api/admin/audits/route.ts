@@ -7,6 +7,19 @@ function checkAuth(req: NextRequest) {
   return token === expected
 }
 
+export async function DELETE(req: NextRequest) {
+  if (!checkAuth(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const { id } = await req.json().catch(() => ({})) as { id?: string }
+  if (id) {
+    await prisma.audit.delete({ where: { id } })
+  } else {
+    await prisma.audit.deleteMany({})
+  }
+  return NextResponse.json({ ok: true })
+}
+
 export async function GET(req: NextRequest) {
   if (!checkAuth(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
