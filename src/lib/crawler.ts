@@ -8,8 +8,10 @@ export interface CrawledPages {
 }
 
 export async function launchBrowser(): Promise<Browser> {
+  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined
   return puppeteer.launch({
     headless: true,
+    executablePath,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -17,6 +19,7 @@ export async function launchBrowser(): Promise<Browser> {
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
+      '--single-process',
       '--disable-gpu',
     ],
   })
