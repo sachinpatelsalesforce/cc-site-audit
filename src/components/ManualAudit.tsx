@@ -262,6 +262,15 @@ function CheckRow({ check, onChange }: CheckRowProps) {
   )
 }
 
+const AUTO_CATEGORIES = ['vitals', 'ai-readiness', 'seo']
+
+function hasRealData(cats: CategoryResult[], id: string) {
+  const cat = cats.find(c => c.id === id)
+  if (!cat) return false
+  // Real data: score > 0, or any check has a detail string (vitals always sets detail even for fails)
+  return cat.score > 0 || cat.checks.some(c => !!c.detail)
+}
+
 export default function ManualAudit({ audit }: { audit: AuditRecord }) {
   const initialResults = audit.results as AuditResult
   const [categories, setCategories] = useState<CategoryResult[]>(initialResults.categories)
@@ -313,6 +322,58 @@ export default function ManualAudit({ audit }: { audit: AuditRecord }) {
       }
     }
   }, [categories, save])
+
+  // Poll for background-populated auto categories (vitals, ai-readiness, seo)
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    async function poll() {
+      try {
+        const res = await fetch(`/api/audit/${audit.id}`)
+        if (!res.ok) return
+        const data = await res.json()
+        const serverCats: CategoryResult[] = (data.results as AuditResult)?.categories ?? []
+        if (!serverCats.length) return
+
+        setCategories(prev => {
+          // Only merge auto-categories that now have real data on server but not locally
+          let changed = false
+          const merged = prev.map(cat => {
+            if (!AUTO_CATEGORIES.includes(cat.id)) return cat
+            const serverCat = serverCats.find(c => c.id === cat.id)
+            if (!serverCat) return cat
+            // Replace if server has real data and local still shows blank template
+            if (!hasRealData(prev, cat.id) && hasRealData(serverCats, cat.id)) {
+              changed = true
+              return serverCat
+            }
+            return cat
+          })
+          return changed ? merged : prev
+        })
+      } catch {
+        // ignore poll errors
+      }
+    }
+
+    function schedule() {
+      timer = setTimeout(async () => {
+        await poll()
+        // Keep polling until all three auto-categories have real data
+        setCategories(prev => {
+          const allDone = AUTO_CATEGORIES.every(id => hasRealData(prev, id))
+          if (!allDone) schedule()
+          return prev
+        })
+      }, 5000)
+    }
+
+    const allDone = AUTO_CATEGORIES.every(id => hasRealData(categories, id))
+    if (!allDone) schedule()
+
+    return () => { if (timer) clearTimeout(timer) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audit.id])
 
   async function finishAudit() {
     await save(categories)
